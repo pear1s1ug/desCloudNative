@@ -1,0 +1,77 @@
+# =====================================================================
+#  Clúster RabbitMQ de 2 nodos - Nexus Gaming (DSY1107, Evaluación 2)
+# =====================================================================
+#  Uso (desde esta carpeta):
+#    cp .env.example .env        (y editar los valores)
+#    docker compose up -d
+#    docker compose ps
+#    docker compose exec rabbitmq-1 rabbitmqctl cluster_status
+#
+#  Puertos (solo en 127.0.0.1: el broker no queda expuesto a la red):
+#    Nodo 1 -> AMQP 5672  | consola http://localhost:15672
+#    Nodo 2 -> AMQP 5673  | consola http://localhost:15673
+#
+#  Los microservicios se conectan con:
+#    spring.rabbitmq.addresses=localhost:5672,localhost:5673
+# =====================================================================
+
+services:
+  rabbitmq-1:
+    image: rabbitmq:4-management
+    container_name: rabbitmq-1
+    hostname: rabbitmq-1
+    restart: unless-stopped
+    environment:
+      RABBITMQ_NODENAME: rabbit@rabbitmq-1
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASS}
+      RABBITMQ_ERLANG_COOKIE: ${RABBIT_COOKIE}
+    ports:
+      - "127.0.0.1:5672:5672"     # AMQP (aplicaciones)
+      - "127.0.0.1:15672:15672"   # Consola de administración
+    volumes:
+      - rabbitmq_data_1:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - rabbitmq_cluster
+
+  rabbitmq-2:
+    image: rabbitmq:4-management
+    container_name: rabbitmq-2
+    hostname: rabbitmq-2
+    restart: unless-stopped
+    environment:
+      RABBITMQ_NODENAME: rabbit@rabbitmq-2
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASS}
+      RABBITMQ_ERLANG_COOKIE: ${RABBIT_COOKIE}   # debe ser idéntica en ambos nodos
+    ports:
+      - "127.0.0.1:5673:5672"     # AMQP (aplicaciones)
+      - "127.0.0.1:15673:15672"   # Consola de administración
+    volumes:
+      - rabbitmq_data_2:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      rabbitmq-1:
+        condition: service_healthy   # arranca cuando el nodo 1 ya responde
+    networks:
+      - rabbitmq_cluster
+
+volumes:
+  rabbitmq_data_1:
+  rabbitmq_data_2:
+
+networks:
+  rabbitmq_cluster:
