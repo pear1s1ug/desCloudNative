@@ -3,14 +3,29 @@ import { useCart } from '../context/CartContext';
 import { formatPrice } from '../utils/formatters';
 import { Trash2, Plus, Minus, ArrowLeft, ShoppingCart, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
+import { crearOrdenAPI } from '../utils/api';
 
 export const CartPage = () => {
   const { cart, removeFromCart, updateQuantity, clearCart, totalPrice } = useCart();
   const [completed, setCompleted] = useState(false);
+  const [orden, setOrden] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleCheckout = () => {
-    setCompleted(true);
-    clearCart();
+  const handleCheckout = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const items = cart.map((item) => ({ productoId: item.id, cantidad: item.quantity }));
+      const respuesta = await crearOrdenAPI(items);
+      setOrden(respuesta);
+      clearCart();
+      setCompleted(true);
+    } catch (e) {
+      setError(e.message || 'No se pudo procesar la compra');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (completed) {
@@ -19,7 +34,7 @@ export const CartPage = () => {
         <CheckCircle2 className="w-16 h-16 text-[#00f2fe] mx-auto animate-bounce" />
         <h1 className="text-2xl font-bold text-white">¡Compra Realizada con Éxito!</h1>
         <p className="text-xs text-slate-400">
-          Tu pedido ha sido procesado por el backend de la Tienda Gamer. Recibirás tu comprobante pronto.
+          Orden #{orden?.ordenId} registrada por {formatPrice(orden?.total ?? 0)}. Tu ticket se está generando.
         </p>
         <Link to="/catalogo" className="btn-gamer-primary inline-flex mt-4">
           Volver a la Tienda
@@ -103,7 +118,7 @@ export const CartPage = () => {
         {/* Resumen de Pago */}
         <div className="glass-card p-6 h-fit space-y-6">
           <h2 className="text-lg font-bold text-white border-b border-white/10 pb-3">Resumen de Orden</h2>
-          
+
           <div className="space-y-3 text-xs text-slate-300">
             <div className="flex justify-between">
               <span>Subtotal</span>
@@ -119,8 +134,13 @@ export const CartPage = () => {
             </div>
           </div>
 
-          <button onClick={handleCheckout} className="btn-gamer-primary w-full justify-center">
-            Pagar Pedido
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <button
+            onClick={handleCheckout}
+            disabled={loading}
+            className="btn-gamer-primary w-full justify-center disabled:opacity-50"
+          >
+            {loading ? 'Procesando...' : 'Pagar Pedido'}
           </button>
         </div>
       </div>

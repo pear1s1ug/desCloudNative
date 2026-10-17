@@ -65,6 +65,10 @@ export const crearProductoAPI = (producto) =>
 export const eliminarProductoAPI = (id) =>
   apiFetch(`/api/productos/${id}`, { method: 'DELETE' });
 
+// Órdenes
+export const crearOrdenAPI = (items) =>
+  apiFetch('/api/ordenes', { method: 'POST', body: JSON.stringify({ items }) });
+
 // Usuarios
 export const fetchUsuariosAPI = () => apiFetch('/api/usuarios');
 export const fetchMiPerfilAPI = () => apiFetch('/api/usuarios/me');

@@ -6,6 +6,7 @@ import com.backend.model.UsuarioModel;
 import com.backend.repository.UsuarioRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.backend.messaging.producer.UsuarioEventPublisher;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,20 +20,28 @@ import java.util.Optional;
 public class UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
+    private final UsuarioEventPublisher eventPublisher;
 
-    public UsuarioService(UsuarioRepository usuarioRepository) {
+    public UsuarioService(UsuarioRepository usuarioRepository, UsuarioEventPublisher eventPublisher) {
         this.usuarioRepository = usuarioRepository;
+        this.eventPublisher = eventPublisher;
     }
 
-    /** Crea o actualiza el perfil a partir de los claims del token. */
     @Transactional
     public UsuarioResponse sincronizar(String azureOid, String nombre, String email, String rol) {
         UsuarioModel usuario = usuarioRepository.findByAzureOid(azureOid)
                 .orElseGet(() -> UsuarioModel.builder().azureOid(azureOid).build());
+        boolean esNuevo = usuario.getId() == null;
+
         usuario.setNombre(nombre);
         usuario.setEmail(email);
         usuario.setRol(rol);
-        return mapToResponse(usuarioRepository.save(usuario));
+        UsuarioModel guardado = usuarioRepository.save(usuario);
+
+        if (esNuevo) {
+            eventPublisher.usuarioRegistrado(guardado.getAzureOid(), guardado.getNombre(), guardado.getEmail());
+        }
+        return mapToResponse(guardado);
     }
 
     public List<UsuarioResponse> obtenerTodos() {

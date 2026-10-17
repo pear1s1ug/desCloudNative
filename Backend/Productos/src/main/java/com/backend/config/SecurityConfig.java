@@ -29,13 +29,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-/**
- * ==========================================
- * CONFIGURACIÓN DE SEGURIDAD (PRODUCTOS)
- * ==========================================
- * Valida el JWT emitido por Azure AD (firma, expiración, issuer y audience).
- * Leer productos requiere el scope; crear, editar y borrar requieren rol Admin.
- */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -68,6 +61,7 @@ public class SecurityConfig {
                 .requestMatchers("/error", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/productos/**").hasAuthority(scope)
                 .requestMatchers("/api/productos/**").hasRole("Admin")
+                .requestMatchers(HttpMethod.POST, "/api/ordenes").hasAnyRole("Admin", "Cliente")
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth -> oauth
