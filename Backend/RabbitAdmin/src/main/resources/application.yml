@@ -1,0 +1,53 @@
+   spring:
+     config:
+       import: "optional:file:.env[.properties]"
+     application:
+       name: rabbitadmin-service
+
+     # RabbitMQ (clúster de 2 nodos)
+     rabbitmq:
+       addresses: ${RABBIT_ADDRESSES:localhost:5672,localhost:5673}
+       username: ${RABBIT_USER}
+       password: ${RABBIT_PASS}
+
+   server:
+     port: ${SERVER_PORT:8085}
+
+   app:
+     # Validación JWT (Azure AD)
+     security:
+       issuer: ${AZURE_ISSUER}
+       jwk-set-uri: ${AZURE_JWKS_URI}
+       audiences: ${AZURE_AUDIENCES}
+       required-scope: ${AZURE_REQUIRED_SCOPE:access_as_user}
+
+     # CORS
+     cors:
+       allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+     # Mensajería: nombres centralizados (copia de infra/messaging-config.yml).
+     # Aquí se usan para proteger los recursos del sistema de borrados por la API.
+     messaging:
+       exchanges:
+         direct: nexus.direct
+         topic: nexus.topic
+         dlx: nexus.dlx
+       queues:
+         notificaciones: nexus.notificaciones.queue
+         tickets: nexus.tickets.queue
+         inventario: nexus.inventario.queue
+       dlq:
+         notificaciones: nexus.notificaciones.dlq
+         tickets: nexus.tickets.dlq
+         inventario: nexus.inventario.dlq
+       routing-keys:
+         usuario-registrado: usuario.registrado
+         orden-creada: orden.creada
+         producto-patron: producto.#
+         producto-creado: producto.creado
+         producto-actualizado: producto.actualizado
+         producto-eliminado: producto.eliminado
+         producto-stock-bajo: producto.stock.bajo
+       ttl-ms: 30000
+       dlq-ttl-ms: 86400000
+       max-reintentos: 3
