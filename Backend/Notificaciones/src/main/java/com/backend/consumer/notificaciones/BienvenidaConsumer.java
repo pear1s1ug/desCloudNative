@@ -6,13 +6,13 @@ import com.backend.messaging.event.UsuarioRegistradoEvent;
 import com.rabbitmq.client.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.amqp.support.AmqpHeaders;
-import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/** Caso 1: notificación de bienvenida a usuarios nuevos (cola nexus.notificaciones.queue). */
 @Component
 public class BienvenidaConsumer {
 
@@ -23,16 +23,16 @@ public class BienvenidaConsumer {
         this.procesador = procesador;
     }
 
-    @RabbitListener(queues = "notificaciones.usuario.bienvenida")
-    public void consumir(UsuarioRegistradoEvent event, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag, Channel channel) throws IOException {
-        procesador.procesar(() -> {
-            if (event.email() == null || event.email().isBlank()) {
-                throw new MensajeInvalidoException("Email vacio o nulo");
+    @RabbitListener(id = "bienvenida-listener", queues = "${app.messaging.queues.notificaciones}")
+    public void recibir(UsuarioRegistradoEvent evento, Message mensaje, Channel channel) throws IOException {
+        procesador.procesar(mensaje, channel, () -> {
+            if (evento.email() == null || evento.email().isBlank()) {
+                throw new MensajeInvalidoException("Usuario sin email: no se puede notificar");
             }
-            if (event.nombre() != null && event.nombre().contains("#falla")) {
-                throw new RuntimeException("Simulacion de falla transitoria");
+            if (evento.nombre() != null && evento.nombre().contains("#falla")) {
+                throw new IllegalStateException("Simulación de falla del servidor de correo");
             }
-            log.info("Notificacion de bienvenida enviada a: {}", event.email());
-        }, deliveryTag, channel);
+            log.info("Correo de bienvenida enviado a {} ({})", evento.nombre(), evento.email());
+        });
     }
 }

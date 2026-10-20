@@ -2,17 +2,17 @@ package com.backend.consumer.tickets;
 
 import com.backend.consumer.soporte.MensajeInvalidoException;
 import com.backend.consumer.soporte.ProcesadorConAck;
-import com.backend.messaging.event.TicketCreadoEvent;
+import com.backend.messaging.event.OrdenCreadaEvent;
 import com.rabbitmq.client.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.amqp.support.AmqpHeaders;
-import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/** Caso 2: generación del ticket de compra (cola nexus.tickets.queue). */
 @Component
 public class TicketConsumer {
 
@@ -23,16 +23,19 @@ public class TicketConsumer {
         this.procesador = procesador;
     }
 
-    @RabbitListener(queues = "notificaciones.ticket.soporte")
-    public void consumir(TicketCreadoEvent event, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag, Channel channel) throws IOException {
-        procesador.procesar(() -> {
-            if (event.asunto() == null || event.asunto().isBlank()) {
-                throw new MensajeInvalidoException("Asunto del ticket nulo o vacio");
+    @RabbitListener(id = "tickets-listener", queues = "${app.messaging.queues.tickets}")
+    public void recibir(OrdenCreadaEvent evento, Message mensaje, Channel channel) throws IOException {
+        procesador.procesar(mensaje, channel, () -> {
+            if (evento.ordenId() == null || evento.items() == null || evento.items().isEmpty()
+                    || evento.total() == null || evento.total() <= 0) {
+                throw new MensajeInvalidoException("Orden sin productos o con total inválido");
             }
-            if (event.asunto().contains("#falla")) {
-                throw new RuntimeException("Simulacion de falla en ticket");
+            if (evento.items().stream().anyMatch(i -> i.nombre() != null && i.nombre().contains("#falla"))) {
+                throw new IllegalStateException("Simulación de falla al generar el ticket");
             }
-            log.info("Ticket de soporte registrado con exito: {}", event.asunto());
-        }, deliveryTag, channel);
+            log.info("Ticket generado para la orden #{}: {} producto(s), total ${}",
+                    evento.ordenId(), evento.items().size(), evento.total());
+            evento.items().forEach(i -> log.info("   - {} x{} (${} c/u)", i.nombre(), i.cantidad(), i.precioUnitario()));
+        });
     }
 }

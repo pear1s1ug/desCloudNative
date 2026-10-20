@@ -1,16 +1,31 @@
 package com.backend.config;
 
-import org.springframework.amqp.core.*;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.DirectExchange;
+import org.springframework.amqp.core.ExchangeBuilder;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
+import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.core.RabbitAdmin;
-import java.util.HashMap;
-import java.util.Map;
 
+/**
+ * ==========================================
+ * TOPOLOGÍA DE MENSAJERÍA (la declara el consumidor)
+ * ==========================================
+ * 3 exchanges, 3 colas (con DLX y TTL), 3 DLQ y 6 bindings, agrupados por caso de uso.
+ * Todos los nombres salen de app.messaging (MensajeriaProperties).
+ *
+ *   Caso 1  nexus.direct --usuario.registrado--> nexus.notificaciones.queue  (DLQ: nexus.notificaciones.dlq)
+ *   Caso 2  nexus.direct --orden.creada-------> nexus.tickets.queue          (DLQ: nexus.tickets.dlq)
+ *   Caso 3  nexus.topic  --producto.#---------> nexus.inventario.queue       (DLQ: nexus.inventario.dlq)
+ *
+ * Mensaje rechazado (NACK sin requeue) o expirado (TTL) -> nexus.dlx -> su DLQ.
+ */
 @Configuration
 @EnableConfigurationProperties(MensajeriaProperties.class)
 public class RabbitConfig {
@@ -21,113 +36,112 @@ public class RabbitConfig {
         this.props = props;
     }
 
-    // ==========================================
-    // 1. EXCHANGES (Direct, Topic, DLX)
-    // ==========================================
+    // ===================== EXCHANGES =====================
+
     @Bean
-    public DirectExchange nexusDirectExchange() {
-        return new DirectExchange(props.exchangeDirect());
+    public DirectExchange directExchange() {
+        return ExchangeBuilder.directExchange(props.exchanges().direct()).durable(true).build();
     }
 
     @Bean
-    public TopicExchange nexusTopicExchange() {
-        return new TopicExchange(props.exchangeTopic());
+    public TopicExchange topicExchange() {
+        return ExchangeBuilder.topicExchange(props.exchanges().topic()).durable(true).build();
     }
 
     @Bean
-    public DirectExchange nexusDlxExchange() {
-        return new DirectExchange(props.exchangeDlx());
+    public DirectExchange dlxExchange() {
+        return ExchangeBuilder.directExchange(props.exchanges().dlx()).durable(true).build();
     }
 
-    // ==========================================
-    // 2. COLAS Y DLQ POR CASO DE USO
-    // ==========================================
+    // ===================== CASO 1: BIENVENIDA =====================
 
-    // --- Caso 1: Bienvenida Usuarios ---
     @Bean
-    public Queue usuarioBienvenidaQueue() {
-        Map<String, Object> args = new HashMap<>();
-        args.put("x-dead-letter-exchange", props.exchangeDlx());
-        args.put("x-dead-letter-routing-key", "usuario.bienvenida.dlq");
-        return new Queue("notificaciones.usuario.bienvenida", true, false, false, args);
+    public Queue notificacionesQueue() {
+        return colaPrincipal(props.queues().notificaciones(), props.dlq().notificaciones());
     }
 
     @Bean
-    public Queue usuarioBienvenidaDlq() {
-        return new Queue("notificaciones.usuario.bienvenida.dlq", true);
-    }
-
-    // --- Caso 2: Tickets Soporte ---
-    @Bean
-    public Queue ticketSoporteQueue() {
-        Map<String, Object> args = new HashMap<>();
-        args.put("x-dead-letter-exchange", props.exchangeDlx());
-        args.put("x-dead-letter-routing-key", "ticket.soporte.dlq");
-        return new Queue("notificaciones.ticket.soporte", true, false, false, args);
+    public Queue notificacionesDlq() {
+        return dlq(props.dlq().notificaciones());
     }
 
     @Bean
-    public Queue ticketSoporteDlq() {
-        return new Queue("notificaciones.ticket.soporte.dlq", true);
-    }
-
-    // --- Caso 3: Alerta Inventario ---
-    @Bean
-    public Queue inventarioAlertaQueue() {
-        Map<String, Object> args = new HashMap<>();
-        args.put("x-dead-letter-exchange", props.exchangeDlx());
-        args.put("x-dead-letter-routing-key", "inventario.alerta.dlq");
-        return new Queue("notificaciones.inventario.alerta", true, false, false, args);
+    public Binding notificacionesBinding() {
+        return BindingBuilder.bind(notificacionesQueue()).to(directExchange()).with(props.routingKeys().usuarioRegistrado());
     }
 
     @Bean
-    public Queue inventarioAlertaDlq() {
-        return new Queue("notificaciones.inventario.alerta.dlq", true);
+    public Binding notificacionesDlqBinding() {
+        return BindingBuilder.bind(notificacionesDlq()).to(dlxExchange()).with(props.dlq().notificaciones());
     }
 
-    // ==========================================
-    // 3. BINDINGS (6 BINDINGS)
-    // ==========================================
-    @Bean
-    public Binding bindingBienvenida(Queue usuarioBienvenidaQueue, TopicExchange nexusTopicExchange) {
-        return BindingBuilder.bind(usuarioBienvenidaQueue).to(nexusTopicExchange).with("usuario.registrado");
-    }
+    // ===================== CASO 2: TICKETS =====================
 
     @Bean
-    public Binding bindingBienvenidaDlq(Queue usuarioBienvenidaDlq, DirectExchange nexusDlxExchange) {
-        return BindingBuilder.bind(usuarioBienvenidaDlq).to(nexusDlxExchange).with("usuario.bienvenida.dlq");
+    public Queue ticketsQueue() {
+        return colaPrincipal(props.queues().tickets(), props.dlq().tickets());
     }
 
     @Bean
-    public Binding bindingTicket(Queue ticketSoporteQueue, DirectExchange nexusDirectExchange) {
-        return BindingBuilder.bind(ticketSoporteQueue).to(nexusDirectExchange).with("ticket.creado");
+    public Queue ticketsDlq() {
+        return dlq(props.dlq().tickets());
     }
 
     @Bean
-    public Binding bindingTicketDlq(Queue ticketSoporteDlq, DirectExchange nexusDlxExchange) {
-        return BindingBuilder.bind(ticketSoporteDlq).to(nexusDlxExchange).with("ticket.soporte.dlq");
+    public Binding ticketsBinding() {
+        return BindingBuilder.bind(ticketsQueue()).to(directExchange()).with(props.routingKeys().ordenCreada());
     }
 
     @Bean
-    public Binding bindingInventario(Queue inventarioAlertaQueue, TopicExchange nexusTopicExchange) {
-        return BindingBuilder.bind(inventarioAlertaQueue).to(nexusTopicExchange).with("producto.stock.bajo");
+    public Binding ticketsDlqBinding() {
+        return BindingBuilder.bind(ticketsDlq()).to(dlxExchange()).with(props.dlq().tickets());
+    }
+
+    // ===================== CASO 3: INVENTARIO =====================
+
+    @Bean
+    public Queue inventarioQueue() {
+        return colaPrincipal(props.queues().inventario(), props.dlq().inventario());
     }
 
     @Bean
-    public Binding bindingInventarioDlq(Queue inventarioAlertaDlq, DirectExchange nexusDlxExchange) {
-        return BindingBuilder.bind(inventarioAlertaDlq).to(nexusDlxExchange).with("inventario.alerta.dlq");
+    public Queue inventarioDlq() {
+        return dlq(props.dlq().inventario());
     }
 
-    // ==========================================
-    // 4. CONVERSOR JSON
-    // ==========================================
+    @Bean
+    public Binding inventarioBinding() {
+        return BindingBuilder.bind(inventarioQueue()).to(topicExchange()).with(props.routingKeys().productoPatron());
+    }
+
+    @Bean
+    public Binding inventarioDlqBinding() {
+        return BindingBuilder.bind(inventarioDlq()).to(dlxExchange()).with(props.dlq().inventario());
+    }
+
+    // ===================== CONVERSOR JSON =====================
+
+    /** Mismo conversor que los productores (Jackson 3): los eventos viajan según infra/eventos.md. */
     @Bean
     public MessageConverter jsonMessageConverter() {
-        return new Jackson2JsonMessageConverter();
+        return new JacksonJsonMessageConverter();
     }
 
-    @Bean
-    public RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
-        return new RabbitAdmin(connectionFactory);
+    // ===================== AUXILIARES =====================
+
+    /** Cola principal: durable, con dead lettering hacia su DLQ y retención (TTL) de app.messaging.ttl-ms. */
+    private Queue colaPrincipal(String nombre, String dlq) {
+        return QueueBuilder.durable(nombre)
+                .deadLetterExchange(props.exchanges().dlx())
+                .deadLetterRoutingKey(dlq)
+                .ttl((int) props.ttlMs())
+                .build();
+    }
+
+    /** DLQ: durable, con retención de app.messaging.dlq-ttl-ms (24 h) para analizar los fallos. */
+    private Queue dlq(String nombre) {
+        return QueueBuilder.durable(nombre)
+                .ttl((int) props.dlqTtlMs())
+                .build();
     }
 }

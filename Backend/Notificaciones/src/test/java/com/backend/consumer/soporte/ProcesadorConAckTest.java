@@ -1,32 +1,82 @@
 package com.backend.consumer.soporte;
 
+import com.backend.config.MensajeriaProperties;
 import com.rabbitmq.client.Channel;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+/** Verifica cada fila de la tabla de decisiones de ProcesadorConAck. */
 class ProcesadorConAckTest {
 
-    @Test
-    void debeEnviarAckCuandoProcesamientoEsExitoso() throws Exception {
-        Channel channel = Mockito.mock(Channel.class);
-        ProcesadorConAck procesador = new ProcesadorConAck();
+    private static final long TAG = 10L;
+    private static final String COLA = "cola.test";
 
-        procesador.procesar(() -> {}, 10L, channel);
+    private Channel channel;
+    private RabbitTemplate rabbitTemplate;
+    private ProcesadorConAck procesador;
 
-        verify(channel).basicAck(10L, false);
+    @BeforeEach
+    void setUp() {
+        channel = mock(Channel.class);
+        rabbitTemplate = mock(RabbitTemplate.class);
+        MensajeriaProperties props = new MensajeriaProperties(null, null, null, null, 0, 0, 3);
+        procesador = new ProcesadorConAck(rabbitTemplate, props);
+    }
+
+    private Message mensaje(Integer reintentosPrevios) {
+        MessageProperties propiedades = new MessageProperties();
+        propiedades.setDeliveryTag(TAG);
+        propiedades.setConsumerQueue(COLA);
+        if (reintentosPrevios != null) {
+            propiedades.setHeader(ProcesadorConAck.HEADER_REINTENTOS, reintentosPrevios);
+        }
+        return new Message("{}".getBytes(), propiedades);
     }
 
     @Test
-    void debeEnviarNackSinRequeueCuandoLanzaExcepcion() throws Exception {
-        Channel channel = Mockito.mock(Channel.class);
-        ProcesadorConAck procesador = new ProcesadorConAck();
+    void exito_haceAck() throws Exception {
+        procesador.procesar(mensaje(null), channel, () -> {});
 
-        procesador.procesar(() -> {
-            throw new MensajeInvalidoException("Error invalido");
-        }, 10L, channel);
+        verify(channel).basicAck(TAG, false);
+    }
 
-        verify(channel).basicNack(10L, false, false);
+    @Test
+    void datoInvalido_vaDirectoALaDlq() throws Exception {
+        procesador.procesar(mensaje(null), channel, () -> {
+            throw new MensajeInvalidoException("dato inválido");
+        });
+
+        verify(channel).basicNack(TAG, false, false);
+        verify(rabbitTemplate, never()).send(anyString(), anyString(), any(Message.class));
+    }
+
+    @Test
+    void errorTransitorio_reintentaEnLaMismaCola() throws Exception {
+        Message m = mensaje(null);
+        procesador.procesar(m, channel, () -> {
+            throw new IllegalStateException("falla transitoria");
+        });
+
+        verify(rabbitTemplate).send("", COLA, m);
+        verify(channel).basicAck(TAG, false);
+    }
+
+    @Test
+    void reintentosAgotados_vaALaDlq() throws Exception {
+        procesador.procesar(mensaje(3), channel, () -> {
+            throw new IllegalStateException("falla transitoria");
+        });
+
+        verify(channel).basicNack(TAG, false, false);
+        verify(rabbitTemplate, never()).send(anyString(), anyString(), any(Message.class));
     }
 }

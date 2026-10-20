@@ -45,14 +45,10 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Jackson 2 is required by Jackson2JsonMessageConverter in Spring AMQP. -->
+        <!-- Jackson 3: JSON de los mensajes (JacksonJsonMessageConverter), igual que los productores -->
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
+            <groupId>tools.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
 
     </dependencies>

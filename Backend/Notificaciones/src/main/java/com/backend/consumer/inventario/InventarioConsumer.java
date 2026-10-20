@@ -2,17 +2,17 @@ package com.backend.consumer.inventario;
 
 import com.backend.consumer.soporte.MensajeInvalidoException;
 import com.backend.consumer.soporte.ProcesadorConAck;
-import com.backend.messaging.event.StockBajoEvent;
+import com.backend.messaging.event.ProductoEvent;
 import com.rabbitmq.client.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.amqp.support.AmqpHeaders;
-import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 
+/** Caso 3: auditoría de inventario y alerta de stock bajo (cola nexus.inventario.queue, binding producto.#). */
 @Component
 public class InventarioConsumer {
 
@@ -23,16 +23,22 @@ public class InventarioConsumer {
         this.procesador = procesador;
     }
 
-    @RabbitListener(queues = "notificaciones.inventario.alerta")
-    public void consumir(StockBajoEvent event, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag, Channel channel) throws IOException {
-        procesador.procesar(() -> {
-            if (event.productoId() == null) {
-                throw new MensajeInvalidoException("ID de producto no informado");
+    @RabbitListener(id = "inventario-listener", queues = "${app.messaging.queues.inventario}")
+    public void recibir(ProductoEvent evento, Message mensaje, Channel channel) throws IOException {
+        procesador.procesar(mensaje, channel, () -> {
+            if (evento.productoId() == null) {
+                throw new MensajeInvalidoException("Evento de inventario sin productoId");
             }
-            if (event.nombre() != null && event.nombre().contains("#falla")) {
-                throw new RuntimeException("Simulacion de falla en inventario");
+            if (evento.nombre() != null && evento.nombre().contains("#falla")) {
+                throw new IllegalStateException("Simulación de falla en el registro de auditoría");
             }
-            log.info("Alerta de stock bajo para producto: {}. Quedan: {}", event.nombre(), event.stock());
-        }, deliveryTag, channel);
+            if ("STOCK_BAJO".equals(evento.accion())) {
+                log.warn("[ALERTA STOCK BAJO] {} (id {}) quedó con {} unidad(es)",
+                        evento.nombre(), evento.productoId(), evento.stock());
+            } else {
+                log.info("Auditoría de inventario: producto {} (id {}) {}, stock {}",
+                        evento.nombre(), evento.productoId(), evento.accion(), evento.stock());
+            }
+        });
     }
 }
