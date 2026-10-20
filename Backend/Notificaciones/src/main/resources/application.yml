@@ -1,0 +1,28 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: notificaciones-service
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+        default-requeue-rejected: false
+
+app:
+  messaging:
+    exchange-direct: nexus.direct
+    exchange-topic: nexus.topic
+    exchange-dlx: nexus.dlx
+
+logging:
+  level:
+    root: INFO
+    com.backend: DEBUG
+    org.springframework.amqp: INFO

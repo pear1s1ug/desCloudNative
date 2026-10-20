@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: nexus-rabbitmq
+    ports:
+      - "5672:5672"   # Puerto AMQP para Spring Boot
+      - "15672:15672" # Puerto de la consola web
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    restart: always
