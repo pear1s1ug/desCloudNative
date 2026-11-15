@@ -1,0 +1,69 @@
+# Reglas de alerta - Nexus Gaming (Kafka). Se ven en http://localhost:9090/alerts
+# Umbrales pensados para desarrollo local; ajustar segun el volumen real.
+groups:
+  - name: kafka
+    rules:
+      - alert: KafkaBrokerCaido
+        expr: up{job="kafka-exporter"} == 0 or kafka_brokers < 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker Kafka no disponible"
+          description: "kafka-exporter no logra leer el cluster (o reporta 0 brokers) hace mas de 1 minuto."
+
+      - alert: KafkaConsumerLagAlto
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag{topic!~".*\\.DLT"}) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Lag alto en {{ $labels.consumergroup }} / {{ $labels.topic }}"
+          description: "El grupo {{ $labels.consumergroup }} tiene {{ $value }} mensajes sin procesar en {{ $labels.topic }} (umbral 10, por mas de 2 minutos)."
+
+      - alert: KafkaMensajesNuevosEnDLT
+        expr: sum by (topic) (increase(kafka_topic_partition_current_offset{topic=~".+\\.DLT"}[5m])) > 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Mensajes nuevos en {{ $labels.topic }}"
+          description: "Llegaron mensajes al dead letter topic {{ $labels.topic }} en los ultimos 5 minutos. Revisar en Kafka UI (headers kafka_dlt-exception-*)."
+
+  - name: servicios
+    rules:
+      - alert: ServicioCaido
+        expr: up{job="servicios-nexus"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Servicio {{ $labels.servicio }} caido"
+          description: "Prometheus no puede leer /actuator/prometheus de {{ $labels.servicio }} ({{ $labels.instance }}) hace mas de 1 minuto."
+
+      - alert: ServicioNoSaludable
+        expr: nexus_servicio_salud == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Servicio {{ $labels.application }} con health DOWN"
+          description: "/actuator/health de {{ $labels.application }} no esta UP hace mas de 1 minuto (Kafka, base de datos u otro componente)."
+
+      - alert: ServicioSinConexionAKafka
+        expr: nexus_kafka_broker_disponible == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.application }} no se conecta a Kafka"
+          description: "El health check de Kafka del servicio {{ $labels.application }} falla hace mas de 1 minuto."
+
+      - alert: PublicacionKafkaConErrores
+        expr: sum by (application, topic) (increase(nexus_kafka_eventos_publicados_total{resultado="error"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Errores al publicar en {{ $labels.topic }}"
+          description: "{{ $labels.application }} no pudo publicar eventos en {{ $labels.topic }} en los ultimos 5 minutos."

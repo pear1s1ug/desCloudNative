@@ -4,18 +4,22 @@ spring:
   application:
     name: notificaciones-service
 
-  # RabbitMQ (clúster de 2 nodos) + ACK manual de los consumidores
-  rabbitmq:
-    addresses: ${RABBIT_ADDRESSES:localhost:5672,localhost:5673}
-    username: ${RABBIT_USER}
-    password: ${RABBIT_PASS}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.backend.messaging.event
+        spring.json.use.type.headers: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
     listener:
-      simple:
-        acknowledge-mode: manual        # el código decide ACK / NACK (ProcesadorConAck)
-        prefetch: 1
-        default-requeue-rejected: false # nunca reencolar en bucle
-        concurrency: 1
-        max-concurrency: 3
+      ack-mode: record
 
 server:
   port: ${SERVER_PORT:8084}
@@ -23,32 +27,54 @@ server:
 app:
   # Mensajería: nombres centralizados (copia de infra/messaging-config.yml)
   messaging:
-    exchanges:
-      direct: nexus.direct
-      topic: nexus.topic
-      dlx: nexus.dlx
-    queues:
-      notificaciones: nexus.notificaciones.queue
-      tickets: nexus.tickets.queue
-      inventario: nexus.inventario.queue
-    dlq:
-      notificaciones: nexus.notificaciones.dlq
-      tickets: nexus.tickets.dlq
-      inventario: nexus.inventario.dlq
-    routing-keys:
-      usuario-registrado: usuario.registrado
-      orden-creada: orden.creada
-      producto-patron: producto.#
-      producto-creado: producto.creado
-      producto-actualizado: producto.actualizado
-      producto-eliminado: producto.eliminado
-      producto-stock-bajo: producto.stock.bajo
-    ttl-ms: 30000
-    dlq-ttl-ms: 86400000
+    topics:
+      usuario-registrado: nexus.usuario.registrado
+      orden-creada: nexus.orden.creada
+      producto-eventos: nexus.producto.eventos
+    dlt:
+      usuario-registrado: nexus.usuario.registrado.DLT
+      orden-creada: nexus.orden.creada.DLT
+      producto-eventos: nexus.producto.eventos.DLT
+    consumer-groups:
+      notificaciones: nexus.notificaciones
+      tickets: nexus.tickets
+      inventario: nexus.inventario
+    partitions: 3
+    replication-factor: 1
     max-reintentos: 3
 
 logging:
   level:
     root: INFO
     com.backend: DEBUG
-    org.springframework.amqp: INFO
+    org.springframework.kafka: INFO
+
+# =====================================================================
+#  Monitoreo (Actuator + Prometheus). Ver MONITOREO_KAFKA.md
+#  Solo se exponen health, info y prometheus; el resto de endpoints queda cerrado.
+# =====================================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-components: always
+      show-details: never
+      probes:
+        enabled: true
+  health:
+    kafka:
+      enabled: ${MANAGEMENT_HEALTH_KAFKA_ENABLED:true}
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    descripcion: Nexus Gaming - microservicio con Kafka
