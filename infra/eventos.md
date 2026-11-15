@@ -1,6 +1,6 @@
 # Contrato de eventos · Nexus Gaming
 
-Formato de los mensajes que viajan por RabbitMQ (JSON). Productores y consumidores
+Formato de los mensajes que viajan por Kafka (JSON). Productores y consumidores
 definen cada uno su propio `record`, con **exactamente estos nombres y tipos de campo**.
 
 Las fechas (`Instant`) viajan como texto ISO-8601 en UTC, por ejemplo `2026-10-17T20:15:00Z`.
@@ -12,9 +12,9 @@ Las fechas (`Instant`) viajan como texto ISO-8601 en UTC, por ejemplo `2026-10-1
 | | |
 |---|---|
 | Productor | Usuarios (al crear un perfil nuevo en `sincronizar()`) |
-| Exchange | `nexus.direct` (direct) |
-| Routing key | `usuario.registrado` |
-| Cola | `nexus.notificaciones.queue` |
+| Topic | `nexus.usuario.registrado` |
+| Key | `azureOid` |
+| Grupo consumidor | `nexus.notificaciones` |
 
 ```java
 public record UsuarioRegistradoEvent(
@@ -40,9 +40,9 @@ public record UsuarioRegistradoEvent(
 | | |
 |---|---|
 | Productor | Productos (`POST /api/ordenes`) |
-| Exchange | `nexus.direct` (direct) |
-| Routing key | `orden.creada` |
-| Cola | `nexus.tickets.queue` |
+| Topic | `nexus.orden.creada` |
+| Key | `ordenId` (string) |
+| Grupo consumidor | `nexus.tickets` |
 
 ```java
 public record OrdenCreadaEvent(
@@ -79,9 +79,10 @@ public record OrdenCreadaEvent(
 | | |
 |---|---|
 | Productor | Productos (crear, editar, borrar; stock bajo 5) |
-| Exchange | `nexus.topic` (topic) |
-| Routing key | `producto.creado` · `producto.actualizado` · `producto.eliminado` · `producto.stock.bajo` |
-| Cola | `nexus.inventario.queue` (binding `producto.#`) |
+| Topic | `nexus.producto.eventos` |
+| Key | `productoId` (string) |
+| Campo discriminador | `accion`: `CREADO` · `ACTUALIZADO` · `ELIMINADO` · `STOCK_BAJO` |
+| Grupo consumidor | `nexus.inventario` |
 
 ```java
 public record ProductoEvent(
@@ -104,10 +105,19 @@ public record ProductoEvent(
 
 ---
 
-## Probar desde la consola de RabbitMQ
+## Topics DLT (dead letter)
 
-*Exchanges* → elegir el exchange → *Publish message*:
+Tras agotar reintentos (o mensaje inválido), el mensaje se publica en:
 
-- **Routing key:** la del evento.
-- **Properties:** `content_type` = `application/json`.
-- **Payload:** el JSON de ejemplo.
+- `nexus.usuario.registrado.DLT`
+- `nexus.orden.creada.DLT`
+- `nexus.producto.eventos.DLT`
+
+---
+
+## Probar desde Kafka UI
+
+Abrir http://localhost:8080 → *Topics* → elegir el topic → *Messages*:
+
+- Revisar **key**, **value**, **partition** y **offset**.
+- En *Consumers* localizar el grupo (`nexus.notificaciones`, `nexus.tickets`, `nexus.inventario`) y su lag.

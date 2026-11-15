@@ -28,7 +28,7 @@ prueba() {
 echo -e "\n===== 1. SIN TOKEN (401 del API Gateway) ====="
 for r in "GET /api/productos" "GET /api/productos/1" "POST /api/productos" "PUT /api/productos/1" "DELETE /api/productos/1" \
          "GET /api/usuarios" "GET /api/usuarios/me" "GET /api/usuarios/1" "PUT /api/usuarios/1" "DELETE /api/usuarios/1" \
-         "GET /api/me" "POST /api/ordenes" "POST /api/admin/rabbit/queues"; do
+         "GET /api/me" "POST /api/ordenes" "POST /api/admin/kafka/topics"; do
   set -- $r; prueba "sin token" "$1" "$2" "" 401
 done
 
@@ -65,20 +65,15 @@ prueba "listar usuarios" GET /api/usuarios "$CLIENTE" 403
 prueba "ver usuario" GET /api/usuarios/1 "$CLIENTE" 403
 prueba "editar usuario" PUT /api/usuarios/1 "$CLIENTE" 403 '{"nombre":"Hack"}'
 prueba "borrar usuario" DELETE /api/usuarios/1 "$CLIENTE" 403
-prueba "crear cola (admin RabbitMQ)" POST /api/admin/rabbit/queues "$CLIENTE" 403 '{"nombre":"evidencias.queue"}'
+prueba "crear topic (admin Kafka)" POST /api/admin/kafka/topics "$CLIENTE" 403 '{"nombre":"evidencias.topic","partitions":1,"replicationFactor":1}'
 
-echo -e "\n===== 5. ADMINISTRADOR DE RABBITMQ (rol Admin) ====="
-prueba "cola con nombre vacío" POST /api/admin/rabbit/queues "$ADMIN" 400 '{"nombre":""}'
-prueba "nombre reservado amq.*" POST /api/admin/rabbit/queues "$ADMIN" 409 '{"nombre":"amq.prueba"}'
-prueba "tipo de exchange inválido" POST /api/admin/rabbit/exchanges "$ADMIN" 400 '{"nombre":"evidencias.exchange","tipo":"OTRO"}'
-prueba "crear cola con DLQ" POST /api/admin/rabbit/queues "$ADMIN" 201 '{"nombre":"evidencias.queue","conDlq":true,"ttlMs":60000}'
-prueba "consultar cola" GET /api/admin/rabbit/queues/evidencias.queue "$ADMIN" 200
-prueba "crear exchange topic" POST /api/admin/rabbit/exchanges "$ADMIN" 201 '{"nombre":"evidencias.exchange","tipo":"TOPIC"}'
-prueba "crear binding" POST /api/admin/rabbit/bindings "$ADMIN" 201 '{"cola":"evidencias.queue","exchange":"evidencias.exchange","routingKey":"evidencia.#"}'
-prueba "borrar cola del sistema" DELETE /api/admin/rabbit/queues/nexus.tickets.queue "$ADMIN" 409
-prueba "borrar exchange creado" DELETE /api/admin/rabbit/exchanges/evidencias.exchange "$ADMIN" 204
-prueba "borrar cola creada" DELETE /api/admin/rabbit/queues/evidencias.queue "$ADMIN" 204
-prueba "borrar su DLQ" DELETE /api/admin/rabbit/queues/evidencias.queue.dlq "$ADMIN" 204
-prueba "borrar cola inexistente" DELETE /api/admin/rabbit/queues/no-existe "$ADMIN" 404
+echo -e "\n===== 5. ADMINISTRADOR DE KAFKA (rol Admin) ====="
+prueba "topic con nombre vacío" POST /api/admin/kafka/topics "$ADMIN" 400 '{"nombre":"","partitions":1,"replicationFactor":1}'
+prueba "nombre reservado __*" POST /api/admin/kafka/topics "$ADMIN" 409 '{"nombre":"__evidencias","partitions":1,"replicationFactor":1}'
+prueba "crear topic" POST /api/admin/kafka/topics "$ADMIN" 201 '{"nombre":"evidencias.topic","partitions":1,"replicationFactor":1}'
+prueba "consultar topic" GET /api/admin/kafka/topics/evidencias.topic "$ADMIN" 200
+prueba "borrar topic del sistema" DELETE /api/admin/kafka/topics/nexus.orden.creada "$ADMIN" 409
+prueba "borrar topic creado" DELETE /api/admin/kafka/topics/evidencias.topic "$ADMIN" 204
+prueba "borrar topic inexistente" DELETE /api/admin/kafka/topics/no-existe "$ADMIN" 404
 
 echo -e "\n===== RESULTADO: $OK correctas, $FAIL fallidas ====="

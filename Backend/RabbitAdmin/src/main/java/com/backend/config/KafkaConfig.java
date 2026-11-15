@@ -1,0 +1,17 @@
+package com.backend.config;
+
+import org.apache.kafka.clients.admin.AdminClient;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.core.KafkaAdmin;
+
+@Configuration
+@EnableConfigurationProperties(MensajeriaProperties.class)
+public class KafkaConfig {
+
+    @Bean(destroyMethod = "close")
+    public AdminClient adminClient(KafkaAdmin kafkaAdmin) {
+        return AdminClient.create(kafkaAdmin.getConfigurationProperties());
+    }
+}

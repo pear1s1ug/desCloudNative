@@ -1,0 +1,81 @@
+# =====================================================================
+#  Monitoreo de Kafka - Nexus Gaming
+#  kafka-exporter (lag y offsets) + Prometheus (metricas y alertas) + Grafana (dashboard)
+#
+#  Requisito: el broker de infra/kafka debe estar arriba (usa su red kafka_kafka_net).
+#  Uso (desde esta carpeta):
+#    docker compose up -d
+#    docker compose ps
+#
+#  Puertos (solo en 127.0.0.1):
+#    Prometheus     -> http://localhost:9090   (alertas en /alerts)
+#    Grafana        -> http://localhost:3000   (usuario/clave en infra/monitoring/.env)
+#    kafka-exporter -> http://localhost:9308/metrics
+#  Kafka UI sigue en http://localhost:8080 (infra/kafka).
+# =====================================================================
+
+services:
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.9.0
+    container_name: kafka-exporter
+    restart: unless-stopped
+    command:
+      - --kafka.server=kafka:29092
+      - --topic.filter=^nexus\..*
+      - --group.filter=^nexus\..*
+    ports:
+      - "127.0.0.1:9308:9308"
+    networks:
+      - kafka_net
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alertas.yml:/etc/prometheus/alertas.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    extra_hosts:
+      # los microservicios Spring Boot corren en Windows (fuera de Docker)
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - kafka-exporter
+    networks:
+      - kafka_net
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Falta GRAFANA_ADMIN_PASSWORD en infra/monitoring/.env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/nexus-kafka.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - kafka_net
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  kafka_net:
+    external: true
+    name: kafka_kafka_net

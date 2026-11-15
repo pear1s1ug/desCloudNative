@@ -66,6 +66,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/error", "/v3/api-docs/**", "/swagger-ui/**").permitAll()
+                // Monitoreo: solo health, info y prometheus quedan publicos (GET); el resto de /actuator no se expone
+                .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()
                 .requestMatchers("/api/usuarios/me").hasAuthority(scope)
                 .requestMatchers("/api/usuarios/**").hasRole("Admin")
                 .anyRequest().authenticated()

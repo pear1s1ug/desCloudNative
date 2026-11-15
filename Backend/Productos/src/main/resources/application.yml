@@ -1,63 +1,87 @@
-   spring:
-     config:
-       import: "optional:file:.env[.properties]"
-     application:
-       name: productos-service
+spring:
+  config:
+    import: "optional:file:.env[.properties]"
+  application:
+    name: productos-service
 
-     # Base de datos (RDS)
-     datasource:
-       url: ${DB_URL}
-       username: ${DB_USERNAME}
-       password: ${DB_PASSWORD}
-       driver-class-name: org.postgresql.Driver
-     jpa:
-       hibernate:
-         ddl-auto: none
-       show-sql: false
+  # Base de datos (RDS)
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
 
-     # RabbitMQ (clúster de 2 nodos)
-     rabbitmq:
-       addresses: ${RABBIT_ADDRESSES:localhost:5672,localhost:5673}
-       username: ${RABBIT_USER}
-       password: ${RABBIT_PASS}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
 
-   server:
-     port: ${SERVER_PORT:8082}
+server:
+  port: ${SERVER_PORT:8082}
 
-   app:
-     # Validación JWT (Azure AD)
-     security:
-       issuer: ${AZURE_ISSUER}
-       jwk-set-uri: ${AZURE_JWKS_URI}
-       audiences: ${AZURE_AUDIENCES}
-       required-scope: ${AZURE_REQUIRED_SCOPE:access_as_user}
+app:
+  # Validación JWT (Azure AD)
+  security:
+    issuer: ${AZURE_ISSUER}
+    jwk-set-uri: ${AZURE_JWKS_URI}
+    audiences: ${AZURE_AUDIENCES}
+    required-scope: ${AZURE_REQUIRED_SCOPE:access_as_user}
 
-     # CORS
-     cors:
-       allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  # CORS
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
 
-     # Mensajería: nombres centralizados (copia de infra/messaging-config.yml)
-     messaging:
-       exchanges:
-         direct: nexus.direct
-         topic: nexus.topic
-         dlx: nexus.dlx
-       queues:
-         notificaciones: nexus.notificaciones.queue
-         tickets: nexus.tickets.queue
-         inventario: nexus.inventario.queue
-       dlq:
-         notificaciones: nexus.notificaciones.dlq
-         tickets: nexus.tickets.dlq
-         inventario: nexus.inventario.dlq
-       routing-keys:
-         usuario-registrado: usuario.registrado
-         orden-creada: orden.creada
-         producto-patron: producto.#
-         producto-creado: producto.creado
-         producto-actualizado: producto.actualizado
-         producto-eliminado: producto.eliminado
-         producto-stock-bajo: producto.stock.bajo
-       ttl-ms: 30000
-       dlq-ttl-ms: 86400000
-       max-reintentos: 3
+  # Mensajería: nombres centralizados (copia de infra/messaging-config.yml)
+  messaging:
+    topics:
+      usuario-registrado: nexus.usuario.registrado
+      orden-creada: nexus.orden.creada
+      producto-eventos: nexus.producto.eventos
+    dlt:
+      usuario-registrado: nexus.usuario.registrado.DLT
+      orden-creada: nexus.orden.creada.DLT
+      producto-eventos: nexus.producto.eventos.DLT
+    consumer-groups:
+      notificaciones: nexus.notificaciones
+      tickets: nexus.tickets
+      inventario: nexus.inventario
+    partitions: 3
+    replication-factor: 1
+    max-reintentos: 3
+
+# =====================================================================
+#  Monitoreo (Actuator + Prometheus). Ver MONITOREO_KAFKA.md
+#  Solo se exponen health, info y prometheus; el resto de endpoints queda cerrado.
+# =====================================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-components: always
+      show-details: never
+      probes:
+        enabled: true
+  health:
+    kafka:
+      enabled: ${MANAGEMENT_HEALTH_KAFKA_ENABLED:true}
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    descripcion: Nexus Gaming - microservicio con Kafka
